@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Adventure</title>
+<style>
+    body {
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        background-color: #222;
+        font-family: Arial, sans-serif;
+        color: white;
+        margin: 0;
+        padding: 20px;
+    }
+
+    .container {
+        display: flex;
+        position: relative;
+    }
+
+    .game-area {
+        position: relative;
+    }
+
+    canvas {
+        background-color: #111;
+        border: 4px solid #00f;
+    }
+
+    .controls {
+        display: flex;
+        flex-direction: column;
+        margin-left: 20px;
+    }
+
+    .controls button, .speed button {
+        padding: 10px 20px;
+        margin: 5px 0;
+        font-size: 16px;
+        cursor: pointer;
+        border: none;
+        border-radius: 5px;
+        background-color: #0f0;
+        color: #000;
+        font-weight: bold;
+    }
+
+    .controls button:hover, .speed button:hover {
+        background-color: #0c0;
+    }
+
+    .header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .logo {
+        width: 40px;
+        height: 40px;
+        margin-right: 10px;
+    }
+
+    .speed {
+        margin-top: 20px;
+        margin-bottom: 20px;
+    }
+
+    .credit {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        font-size: 12px;
+        color: #aaa;
+    }
+
+    .chat-link {
+        position: absolute;
+        left: -220px;
+        top: 20px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chat-link button {
+        background-color: #00f;
+        color: #fff;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+
+    h1 {
+        margin: 0;
+        font-size: 24px;
+    }
+</style>
+</head>
+<body>
+
+<div class="container">
+    <!-- ChatGPT Link on Left Side -->
+    <div class="chat-link">
+        <a href="https://chatgpt.com/share/68c80f15-28d4-8000-9eed-ec2da9549458" target="_blank">
+            <button>View Chat History</button>
+        </a>
+    </div>
+
+    <div class="game-area">
+        <div class="header">
+            <!-- Simple snake logo -->
+            <svg class="logo" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="#0f0"/>
+                <circle cx="65" cy="35" r="5" fill="#000"/>
+                <circle cx="65" cy="65" r="5" fill="#000"/>
+            </svg>
+            <h1>Snake Adventure</h1>
+        </div>
+
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        <div class="credit">Made by Nabin Lama</div>
+    </div>
+
+    <div class="controls">
+        <div class="speed">
+            <label>Speed:</label>
+            <button id="easyBtn">Easy</button>
+            <button id="normalBtn">Normal</button>
+            <button id="hardBtn">Hard</button>
+        </div>
+        <button id="startBtn">Start</button>
+        <button id="resumeBtn">Resume</button>
+        <button id="exitBtn">Exit</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const box = 15;
+const canvasWidth = 600;
+const canvasHeight = 400;
+
+let snake = [];
+let direction = "RIGHT";
+let food = {};
+let score = 0;
+let game = null;
+let speed = 100;
+let isPaused = false;
+
+// Initialize game
+function initGame() {
+    snake = [];
+    snake[0] = { x: 10 * box, y: 10 * box };
+    direction = "RIGHT";
+    food = randomFood();
+    score = 0;
+    isPaused = false;
+}
+
+// Random food
+function randomFood() {
+    return {
+        x: Math.floor(Math.random() * (canvasWidth / box)) * box,
+        y: Math.floor(Math.random() * (canvasHeight / box)) * box
+    };
+}
+
+// Controls
+document.addEventListener("keydown", directionHandler);
+function directionHandler(event) {
+    if(event.key === "ArrowLeft" && direction !== "RIGHT") direction = "LEFT";
+    if(event.key === "ArrowUp" && direction !== "DOWN") direction = "UP";
+    if(event.key === "ArrowRight" && direction !== "LEFT") direction = "RIGHT";
+    if(event.key === "ArrowDown" && direction !== "UP") direction = "DOWN";
+}
+
+// Draw game
+function draw() {
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Draw snake
+    for(let i = 0; i < snake.length; i++) {
+        if(i === 0) {
+            // Head with eyes
+            ctx.fillStyle = "#0f0";
+            ctx.fillRect(snake[i].x, snake[i].y, box, box);
+            ctx.fillStyle = "#000";
+            if(direction === "RIGHT") {
+                ctx.fillRect(snake[i].x + box - 4, snake[i].y + 3, 2, 2);
+                ctx.fillRect(snake[i].x + box - 4, snake[i].y + box - 5, 2, 2);
+            } else if(direction === "LEFT") {
+                ctx.fillRect(snake[i].x + 2, snake[i].y + 3, 2, 2);
+                ctx.fillRect(snake[i].x + 2, snake[i].y + box - 5, 2, 2);
+            } else if(direction === "UP") {
+                ctx.fillRect(snake[i].x + 3, snake[i].y + 2, 2, 2);
+                ctx.fillRect(snake[i].x + box - 5, snake[i].y + 2, 2, 2);
+            } else if(direction === "DOWN") {
+                ctx.fillRect(snake[i].x + 3, snake[i].y + box - 4, 2, 2);
+                ctx.fillRect(snake[i].x + box - 5, snake[i].y + box - 4, 2, 2);
+            }
+        } else {
+            // Body dots
+            ctx.fillStyle = "#0a0";
+            ctx.beginPath();
+            ctx.arc(snake[i].x + box/2, snake[i].y + box/2, box/2, 0, Math.PI*2);
+            ctx.fill();
+        }
+    }
+
+    // Draw food
+    ctx.fillStyle = "red";
+    ctx.beginPath();
+    ctx.arc(food.x + box/2, food.y + box/2, box/2, 0, Math.PI*2);
+    ctx.fill();
+
+    // Move snake
+    let snakeX = snake[0].x;
+    let snakeY = snake[0].y;
+
+    if(direction === "LEFT") snakeX -= box;
+    if(direction === "UP") snakeY -= box;
+    if(direction === "RIGHT") snakeX += box;
+    if(direction === "DOWN") snakeY += box;
+
+    // Eat food
+    if(snakeX === food.x && snakeY === food.y) {
+        score += 10;
+        food = randomFood();
+    } else {
+        snake.pop();
+    }
+
+    let newHead = { x: snakeX, y: snakeY };
+
+    // Collision
+    if(snakeX < 0 || snakeX >= canvasWidth || snakeY < 0 || snakeY >= canvasHeight || collision(newHead, snake)) {
+        clearInterval(game);
+        alert("Game Over! Score: " + score);
+        initGame();
+        return;
+    }
+
+    snake.unshift(newHead);
+
+    // Draw score
+    ctx.fillStyle = "white";
+    ctx.font = "16px Arial";
+    ctx.fillText("Score: " + score, 10, 20);
+}
+
+// Collision detection
+function collision(head, array) {
+    for(let i = 1; i < array.length; i++) {
+        if(head.x === array[i].x && head.y === array[i].y) return true;
+    }
+    return false;
+}
+
+// Buttons
+document.getElementById("startBtn").addEventListener("click", () => {
+    clearInterval(game);
+    initGame();
+    game = setInterval(draw, speed);
+});
+
+document.getElementById("resumeBtn").addEventListener("click", () => {
+    if(!isPaused) return;
+    game = setInterval(draw, speed);
+    isPaused = false;
+});
+
+document.getElementById("exitBtn").addEventListener("click", () => {
+    clearInterval(game);
+    ctx.clearRect(0,0,canvasWidth,canvasHeight);
+    alert("Game Exited! Score: " + score);
+    initGame();
+    isPaused = true;
+});
+
+// Speed buttons
+document.getElementById("easyBtn").addEventListener("click", () => { speed = 150; restartGame(); });
+document.getElementById("normalBtn").addEventListener("click", () => { speed = 100; restartGame(); });
+document.getElementById("hardBtn").addEventListener("click", () => { speed = 50; restartGame(); });
+
+function restartGame() {
+    clearInterval(game);
+    if(!isPaused) game = setInterval(draw, speed);
+}
+
+// Pause on tab switch
+window.addEventListener("blur", () => {
+    clearInterval(game);
+    isPaused = true;
+});
+
+// Initialize
+initGame();
+</script>
+
+</body>
+</html>
