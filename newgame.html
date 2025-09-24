@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Adventure</title>
+<style>
+    body {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        background-color: #111;
+        font-family: Arial, sans-serif;
+        margin: 0;
+        height: 100vh;
+    }
+
+    .game-area {
+        position: relative;
+        text-align: center;
+    }
+
+    canvas {
+        border: 6px solid #004080;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+
+    .score {
+        font-size: 22px;
+        color: white;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+
+    .controls {
+        margin-top: 10px;
+    }
+
+    .controls button {
+        padding: 8px 16px;
+        margin: 5px;
+        font-size: 16px;
+        font-weight: bold;
+        background: #00aaff;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .controls button:hover {
+        background: #0088cc;
+    }
+
+    .mobile-controls {
+        margin-top: 15px;
+        display: grid;
+        grid-template-columns: 60px 60px 60px;
+        grid-template-rows: 60px 60px;
+        justify-content: center;
+        gap: 5px;
+    }
+
+    .mobile-controls button {
+        font-size: 20px;
+        background: #ffcc00;
+        border: none;
+        border-radius: 10px;
+        font-weight: bold;
+    }
+
+    .mobile-controls button:active {
+        background: #ffaa00;
+    }
+
+    .message {
+        position: absolute;
+        top: 45%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.7);
+        padding: 20px;
+        border-radius: 10px;
+        font-size: 22px;
+        text-align: center;
+        color: white;
+        display: none;
+    }
+</style>
+</head>
+<body>
+
+<div class="game-area">
+    <div id="score" class="score">Score: 0</div>
+    <canvas id="gameCanvas" width="600" height="400"></canvas>
+    <div id="messageBox" class="message"></div>
+
+    <div class="controls">
+        <button onclick="setLevel('easy')">Easy</button>
+        <button onclick="setLevel('medium')">Medium</button>
+        <button onclick="setLevel('hard')">Hard</button>
+        <button onclick="startGame()">Restart</button>
+    </div>
+
+    <!-- Mobile Controls -->
+    <div class="mobile-controls">
+        <div></div>
+        <button onclick="setDirection('UP')">⬆️</button>
+        <div></div>
+        <button onclick="setDirection('LEFT')">⬅️</button>
+        <button onclick="setDirection('DOWN')">⬇️</button>
+        <button onclick="setDirection('RIGHT')">➡️</button>
+    </div>
+</div>
+
+<!-- Sounds -->
+<audio id="eatSound" src="https://actions.google.com/sounds/v1/cartoon/pop.ogg"></audio>
+<audio id="gameOverSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+<audio id="bgMusic" src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" loop></audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreDisplay = document.getElementById("score");
+const messageBox = document.getElementById("messageBox");
+
+const eatSound = document.getElementById("eatSound");
+const gameOverSound = document.getElementById("gameOverSound");
+const bgMusic = document.getElementById("bgMusic");
+
+const box = 20;
+const rows = canvas.height / box;
+const cols = canvas.width / box;
+
+let snake = [{x: 5 * box, y: 5 * box}];
+let direction = "RIGHT";
+let food = {};
+let score = 0;
+let game = null;
+let speed = 120; // default
+
+function initGame() {
+    snake = [{x: 5 * box, y: 5 * box}];
+    direction = "RIGHT";
+    score = 0;
+    scoreDisplay.textContent = "Score: " + score;
+    food = randomFood();
+    hideMessage();
+    bgMusic.play();
+}
+
+function randomFood() {
+    return {
+        x: Math.floor(Math.random() * cols) * box,
+        y: Math.floor(Math.random() * rows) * box
+    };
+}
+
+// Controls
+document.addEventListener("keydown", e => {
+    if(e.key === "ArrowLeft" && direction !== "RIGHT") direction = "LEFT";
+    if(e.key === "ArrowUp" && direction !== "DOWN") direction = "UP";
+    if(e.key === "ArrowRight" && direction !== "LEFT") direction = "RIGHT";
+    if(e.key === "ArrowDown" && direction !== "UP") direction = "DOWN";
+});
+
+// Mobile control function
+function setDirection(dir) {
+    if(dir === "LEFT" && direction !== "RIGHT") direction = "LEFT";
+    if(dir === "UP" && direction !== "DOWN") direction = "UP";
+    if(dir === "RIGHT" && direction !== "LEFT") direction = "RIGHT";
+    if(dir === "DOWN" && direction !== "UP") direction = "DOWN";
+}
+
+// Blue checkerboard
+function drawBoard() {
+    for(let row = 0; row < rows; row++) {
+        for(let col = 0; col < cols; col++) {
+            ctx.fillStyle = (row + col) % 2 === 0 ? "#5dade2" : "#3498db";
+            ctx.fillRect(col * box, row * box, box, box);
+        }
+    }
+}
+
+// Yellow snake with round head + eyes
+function drawSnake() {
+    for(let i = 0; i < snake.length; i++) {
+        ctx.fillStyle = i === 0 ? "#ffeb3b" : "#fdd835";
+        ctx.beginPath();
+        ctx.roundRect(snake[i].x, snake[i].y, box, box, i === 0 ? 10 : 5);
+        ctx.fill();
+
+        if(i === 0) {
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(snake[i].x + 6, snake[i].y + 6, 3, 0, Math.PI*2);
+            ctx.arc(snake[i].x + 14, snake[i].y + 6, 3, 0, Math.PI*2);
+            ctx.fill();
+
+            ctx.fillStyle = "black";
+            ctx.beginPath();
+            ctx.arc(snake[i].x + 6, snake[i].y + 6, 1.5, 0, Math.PI*2);
+            ctx.arc(snake[i].x + 14, snake[i].y + 6, 1.5, 0, Math.PI*2);
+            ctx.fill();
+        }
+    }
+}
+
+// Mango with two leaves
+function drawFood() {
+    ctx.fillStyle = "orange";
+    ctx.beginPath();
+    ctx.ellipse(food.x + box/2, food.y + box/2, 10, 14, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = "green";
+    ctx.beginPath();
+    ctx.ellipse(food.x + box/2 - 5, food.y + 2, 6, 3, Math.PI/4, 0, Math.PI*2);
+    ctx.ellipse(food.x + box/2 + 5, food.y + 2, 6, 3, -Math.PI/4, 0, Math.PI*2);
+    ctx.fill();
+}
+
+// Game loop
+function draw() {
+    drawBoard();
+    drawSnake();
+    drawFood();
+
+    let snakeX = snake[0].x;
+    let snakeY = snake[0].y;
+
+    if(direction === "LEFT") snakeX -= box;
+    if(direction === "UP") snakeY -= box;
+    if(direction === "RIGHT") snakeX += box;
+    if(direction === "DOWN") snakeY += box;
+
+    if(snakeX === food.x && snakeY === food.y) {
+        score += 10;
+        scoreDisplay.textContent = "Score: " + score;
+        food = randomFood();
+        eatSound.play();
+    } else {
+        snake.pop();
+    }
+
+    let newHead = {x: snakeX, y: snakeY};
+
+    if(snakeX < 0 || snakeX >= canvas.width || snakeY < 0 || snakeY >= canvas.height || collision(newHead, snake)) {
+        clearInterval(game);
+        gameOverSound.play();
+        showMessage("Game Over! Final Score: " + score);
+        bgMusic.pause();
+        bgMusic.currentTime = 0;
+        return;
+    }
+
+    snake.unshift(newHead);
+}
+
+function collision(head, array) {
+    return array.some((part, i) => i !== 0 && head.x === part.x && head.y === part.y);
+}
+
+function showMessage(text) {
+    messageBox.style.display = "block";
+    messageBox.innerText = text;
+}
+function hideMessage() {
+    messageBox.style.display = "none";
+}
+
+function setLevel(level) {
+    if(level === "easy") speed = 150;
+    if(level === "medium") speed = 100;
+    if(level === "hard") speed = 60;
+    startGame();
+}
+
+function startGame() {
+    clearInterval(game);
+    initGame();
+    game = setInterval(draw, speed);
+}
+
+// Auto start
+startGame();
+</script>
+
+</body>
+</html>
