@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CSV Analyzer – Full Client-Side App</title>
+<style>
+/* ---------------- GLOBAL STYLES ---------------- */
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f7fa;
+    margin: 0;
+    padding: 20px;
+}
+h2 { margin-top: 40px; }
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 25px;
+}
+input, select, button, textarea {
+    padding: 8px 10px;
+    margin: 5px 0;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+button {
+    background: #007bff;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+button:hover { background: #0056cc; }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+th, td {
+    border: 1px solid #ddd;
+    padding: 6px;
+    text-align: left;
+}
+th {
+    background: #eaeff5;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 8px;
+    background: #dc3545;
+    color: white;
+    font-size: 12px;
+}
+canvas { width: 100% !important; max-height: 350px; }
+</style>
+</head>
+<body>
+
+<h1>📊 CSV Analyzer – Client-Side Web App</h1>
+
+<!-- ---------------- CSV UPLOAD ---------------- -->
+<div class="card">
+<h2>1. Upload CSV</h2>
+<input type="file" id="csvFile">
+<br>
+<label>Delimiter:</label>
+<input type="text" id="delimiter" value="," style="width:50px;">
+<label><input type="checkbox" id="header" checked> File has header</label>
+<button onclick="loadCSV()">Load CSV</button>
+</div>
+
+<!-- ---------------- DATA PREVIEW ---------------- -->
+<div class="card">
+<h2>2. Data Preview</h2>
+<div id="preview"></div>
+</div>
+
+<!-- ---------------- STATISTICS ---------------- -->
+<div class="card">
+<h2>3. Descriptive Statistics</h2>
+<div id="stats"></div>
+</div>
+
+<!-- ---------------- ANOMALY DETECTION ---------------- -->
+<div class="card">
+<h2>4. Anomaly Detection</h2>
+<select id="anomalyMethod">
+<option value="z">Z-Score</option>
+<option value="iqr">IQR</option>
+<option value="both">Both</option>
+</select>
+<button onclick="detectAnomalies()">Run Detection</button>
+
+<p>Anomalies: <span id="anomalyCount" class="badge">0</span></p>
+
+<h3>Normal Rows</h3>
+<div id="normalRows"></div>
+
+<h3>⚠ Anomalous Rows</h3>
+<div id="anomalyRows"></div>
+
+<button onclick="exportCSV(anomalies, 'anomalies.csv')">Download Anomalies</button>
+</div>
+
+<!-- ---------------- FILTERING ---------------- -->
+<div class="card">
+<h2>5. Filter Data</h2>
+<textarea id="filterInput" rows="2" style="width:100%;" placeholder='Example: Age > 30 && Country === "Nepal"'></textarea>
+<button onclick="applyFilter()">Apply Filter</button>
+<div id="filteredTable"></div>
+<button onclick="exportFiltered()">Download Filtered CSV</button>
+</div>
+
+<!-- ---------------- GROUP BY ---------------- -->
+<div class="card">
+<h2>6. Group By & Aggregation</h2>
+<select id="groupCol"></select>
+<select id="aggCol"></select>
+<select id="aggFunc">
+<option value="count">COUNT</option>
+<option value="sum">SUM</option>
+<option value="avg">AVERAGE</option>
+</select>
+<button onclick="runGroup()">Run</button>
+<div id="groupResult"></div>
+<button onclick="exportGroup()">Download Group Data</button>
+</div>
+
+<!-- ---------------- DATE TREND ---------------- -->
+<div class="card">
+<h2>7. Date / Time Trend Analysis</h2>
+<select id="dateCol"></select>
+<select id="valueCol"></select>
+<select id="period">
+<option value="day">Daily</option>
+<option value="month">Monthly</option>
+<option value="year">Yearly</option>
+</select>
+<button onclick="runTrend()">Generate Trend</button>
+<div id="trendTable"></div>
+<canvas id="trendChart"></canvas>
+</div>
+
+<!-- ---------------- VISUALIZATION ---------------- -->
+<div class="card">
+<h2>8. Visualization</h2>
+<select id="chartColumn"></select>
+<button onclick="drawChart()">Generate Chart</button>
+<canvas id="chartCanvas"></canvas>
+</div>
+
+<!-- PapaParse + Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+let data = [];
+let columns = [];
+let anomalies = [];
+let filtered = [];
+let grouped = [];
+let trendChart, generalChart;
+
+/* ---------------- LOAD CSV ---------------- */
+function loadCSV() {
+    const file = document.getElementById("csvFile").files[0];
+    const delimiter = document.getElementById("delimiter").value;
+    const hasHeader = document.getElementById("header").checked;
+
+    Papa.parse(file, {
+        delimiter: delimiter,
+        header: hasHeader,
+        dynamicTyping: true,
+        complete: function(results) {
+            data = results.data;
+            columns = hasHeader ? Object.keys(data[0]) : data[0].map((_, i) => "Column " + (i+1));
+            renderTable("preview", data);
+            populateDropdowns();
+            calculateStats();
+            alert("CSV Loaded Successfully!");
+        }
+    });
+}
+
+/* ---------------- RENDER TABLE ---------------- */
+function renderTable(id, rows) {
+    if (!rows || rows.length === 0) { document.getElementById(id).innerHTML = "No data"; return; }
+
+    let html = "<table><thead><tr>";
+    columns.forEach(col => html += "<th>" + col + "</th>");
+    html += "</tr></thead><tbody>";
+
+    rows.forEach(row => {
+        html += "<tr>";
+        columns.forEach(col => html += "<td>" + (row[col] ?? "") + "</td>");
+        html += "</tr>";
+    });
+    html += "</tbody></table>";
+
+    document.getElementById(id).innerHTML = html;
+}
+
+/* ---------------- COLUMN TYPE DETECTION ---------------- */
+function detectColumnType(values) {
+    if (values.every(v => !isNaN(v))) return "numeric";
+    if (values.every(v => !isNaN(Date.parse(v)))) return "date";
+    return "categorical";
+}
+
+/* ---------------- STATISTICS ---------------- */
+function calculateStats() {
+    let html = "<table><tr><th>Column</th><th>Type</th><th>Details</th></tr>";
+    
+    columns.forEach(col => {
+        const values = data.map(r => r[col]).filter(v => v !== "" && v !== null);
+        const type = detectColumnType(values);
+
+        let details = "";
+
+        if (type === "numeric") {
+            const nums = values.map(Number).sort((a,b) => a-b);
+            const mean = nums.reduce((a,b)=>a+b)/nums.length;
+            const median = nums[Math.floor(nums.length/2)];
+            const min = nums[0], max = nums[nums.length-1];
+            details = `
+                Mean: ${mean.toFixed(2)}<br>
+                Median: ${median}<br>
+                Min: ${min}<br>
+                Max: ${max}<br>
+            `;
+        }
+        if (type === "categorical") {
+            const uniq = [...new Set(values)];
+            details = `Unique values (${uniq.length}): ${uniq.join(", ")}`;
+        }
+        if (type === "date") {
+            const dates = values.map(v=>new Date(v));
+            details = `Range: ${dates[0].toDateString()} → ${dates[dates.length-1].toDateString()}`;
+        }
+
+        html += `<tr><td>${col}</td><td>${type}</td><td>${details}</td></tr>`;
+    });
+
+    html += "</table>";
+    document.getElementById("stats").innerHTML = html;
+}
+
+/* ---------------- ANOMALY DETECTION ---------------- */
+function detectAnomalies() {
+    anomalies = [];
+    let normal = [];
+
+    columns.forEach(col => {
+        const values = data.map(r => Number(r[col])).filter(v => !isNaN(v));
+        if (values.length === 0) return;
+
+        const mean = values.reduce((a,b)=>a+b)/values.length;
+        const sd = Math.sqrt(values.map(v => (v-mean)**2).reduce((a,b)=>a+b)/values.length);
+
+        const sorted = [...values].sort((a,b)=>a-b);
+        const q1 = sorted[Math.floor(sorted.length*0.25)];
+        const q3 = sorted[Math.floor(sorted.length*0.75)];
+        const iqr = q3 - q1;
+        const lower = q1 - 1.5*iqr;
+        const upper = q3 + 1.5*iqr;
+
+        data.forEach(row => {
+            const val = Number(row[col]);
+            if (isNaN(val)) return;
+            let flag = false;
+
+            const z = Math.abs((val - mean) / sd);
+
+            const method = document.getElementById("anomalyMethod").value;
+            if (method === "z" && z > 3) flag = true;
+            if (method === "iqr" && (val < lower || val > upper)) flag = true;
+            if (method === "both" && (z > 3 || val < lower || val > upper)) flag = true;
+
+            if (flag) anomalies.push(row);
+        });
+    });
+
+    // Remove duplicates
+    anomalies = anomalies.filter((v,i,a)=>a.indexOf(v)===i);
+    normal = data.filter(r => !anomalies.includes(r));
+
+    document.getElementById("anomalyCount").innerText = anomalies.length;
+    renderTable("anomalyRows", anomalies);
+    renderTable("normalRows", normal);
+}
+
+/* ---------------- FILTERING ---------------- */
+function applyFilter() {
+    const exp = document.getElementById("filterInput").value;
+    filtered = data.filter(r => { try { return eval(exp); } catch { return false; } });
+    renderTable("filteredTable", filtered);
+}
+function exportFiltered() { exportCSV(filtered, "filtered.csv"); }
+
+/* ---------------- GROUP BY ---------------- */
+function populateDropdowns() {
+    const dropdowns = ["groupCol","aggCol","dateCol","valueCol","chartColumn"];
+    dropdowns.forEach(id => {
+        const el = document.getElementById(id);
+        el.innerHTML = "";
+        columns.forEach(c => el.innerHTML += `<option>${c}</option>`);
+    });
+}
+
+function runGroup() {
+    const gcol = document.getElementById("groupCol").value;
+    const acol = document.getElementById("aggCol").value;
+    const func = document.getElementById("aggFunc").value;
+
+    let groups = {};
+
+    data.forEach(row => {
+        const key = row[gcol];
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(Number(row[acol]));
+    });
+
+    grouped = Object.keys(groups).map(k => {
+        let vals = groups[k];
+        if (func === "count") return { [gcol]: k, value: vals.length };
+        if (func === "sum") return { [gcol]: k, value: vals.reduce((a,b)=>a+b,0) };
+        if (func === "avg") return { [gcol]: k, value: (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) };
+    });
+
+    renderTable("groupResult", grouped);
+}
+function exportGroup() { exportCSV(grouped, "grouped.csv"); }
+
+/* ---------------- TREND ---------------- */
+function runTrend() {
+    const dcol = document.getElementById("dateCol").value;
+    const vcol = document.getElementById("valueCol").value;
+    const per = document.getElementById("period").value;
+
+    let map = {};
+
+    data.forEach(r => {
+        const date = new Date(r[dcol]);
+        if (isNaN(date)) return;
+
+        let key = "";
+        if (per === "day") key = date.toISOString().slice(0,10);
+        if (per === "month") key = date.getFullYear()+"-"+(date.getMonth()+1);
+        if (per === "year") key = date.getFullYear();
+
+        if (!map[key]) map[key] = 0;
+        map[key] += Number(r[vcol]) || 0;
+    });
+
+    const rows = Object.keys(map).map(k => ({ Period: k, Value: map[k] }));
+    renderTable("trendTable", rows);
+
+    if (trendChart) trendChart.destroy();
+    trendChart = new Chart(document.getElementById("trendChart"), {
+        type: "line",
+        data: {
+            labels: Object.keys(map),
+            datasets: [{ label: "Trend", data: Object.values(map) }]
+        }
+    });
+}
+
+/* ---------------- VISUAL CHARTS ---------------- */
+function drawChart() {
+    const col = document.getElementById("chartColumn").value;
+    const values = data.map(r => r[col]);
+
+    if (generalChart) generalChart.destroy();
+
+    if (values.every(v => !isNaN(v))) {
+        generalChart = new Chart(chartCanvas, {
+            type: "bar",
+            data: {
+                labels: values,
+                datasets: [{ label: col, data: values }]
+            }
+        });
+    } else {
+        const counts = {};
+        values.forEach(v => counts[v] = (counts[v] || 0) + 1);
+
+        generalChart = new Chart(chartCanvas, {
+            type: "bar",
+            data: {
+                labels: Object.keys(counts),
+                datasets: [{ label: col, data: Object.values(counts) }]
+            }
+        });
+    }
+}
+
+/* ---------------- EXPORT CSV ---------------- */
+function exportCSV(rows, filename) {
+    const csv = Papa.unparse(rows);
+    const blob = new Blob([csv]);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+}
+</script>
+</body>
+</html>
