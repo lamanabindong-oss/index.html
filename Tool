@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>CSV Anomaly Detector</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f4f4f4;
+        }
+        h1 {
+            text-align: center;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        table, th, td {
+            border: 1px solid #999;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        .anomaly {
+            background: #ffcccc;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .count-box {
+            background: #eef;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>CSV Anomaly Detector</h1>
+
+    <input type="file" id="csvFile" accept=".csv">
+    <button onclick="processCSV()">Upload & Detect</button>
+
+    <div class="count-box" id="anomalyCount"></div>
+
+    <h2>Normal Data</h2>
+    <table id="normalTable"></table>
+
+    <h2>Anomalies</h2>
+    <table id="anomalyTable"></table>
+
+    <button onclick="downloadAnomalies()">Download Anomalies as CSV</button>
+</div>
+
+<script>
+// Parse CSV File
+function processCSV() {
+    const fileInput = document.getElementById("csvFile");
+    if (!fileInput.files.length) {
+        alert("Please upload a CSV file.");
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const rows = text.trim().split("\n").map(r => r.split(","));
+
+        const headers = rows[0];
+        const data = rows.slice(1);
+
+        // convert numeric columns
+        const numericData = data.map(row => row.map(v => parseFloat(v)));
+
+        // detect anomalies
+        const anomalyIndexes = detectAnomalies(numericData);
+
+        // separate normal + anomalies
+        const normalRows = [];
+        const anomalyRows = [];
+
+        numericData.forEach((row, i) => {
+            if (anomalyIndexes.includes(i)) anomalyRows.push(data[i]);
+            else normalRows.push(data[i]);
+        });
+
+        renderTable("normalTable", headers, normalRows);
+        renderTable("anomalyTable", headers, anomalyRows);
+
+        document.getElementById("anomalyCount").innerHTML =
+            `<strong>Total Anomalies:</strong> ${anomalyRows.length}`;
+        
+        window.anomalyCSV = anomalyRows; 
+        window.headers = headers;
+    };
+    reader.readAsText(fileInput.files[0]);
+}
+
+/* -----------------------
+   SIMPLE IQR OUTLIER DETECTION
+   Outlier if:
+     value < Q1 - 1.5*IQR
+     OR
+     value > Q3 + 1.5*IQR
+-------------------------*/
+function detectAnomalies(data) {
+    const anomalies = new Set();
+    const cols = data[0].length;
+
+    for (let col = 0; col < cols; col++) {
+        let colValues = data.map(r => r[col]).filter(v => !isNaN(v)).sort((a,b)=>a-b);
+
+        const Q1 = colValues[Math.floor(colValues.length * 0.25)];
+        const Q3 = colValues[Math.floor(colValues.length * 0.75)];
+        const IQR = Q3 - Q1;
+
+        const lower = Q1 - 1.5 * IQR;
+        const upper = Q3 + 1.5 * IQR;
+
+        data.forEach((row, i) => {
+            if (row[col] < lower || row[col] > upper) {
+                anomalies.add(i);
+            }
+        });
+    }
+
+    return [...anomalies];
+}
+
+// Render HTML table
+function renderTable(id, headers, rows) {
+    let html = "<tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr>";
+    rows.forEach(r => {
+        html += "<tr>";
+        r.forEach(v => html += `<td>${v}</td>`);
+        html += "</tr>";
+    });
+    document.getElementById(id).innerHTML = html;
+}
+
+// Download anomalies CSV
+function downloadAnomalies() {
+    if (!window.anomalyCSV || !window.anomalyCSV.length) {
+        alert("No anomalies to download.");
+        return;
+    }
+
+    let csv = window.headers.join(",") + "\n";
+    window.anomalyCSV.forEach(row => {
+        csv += row.join(",") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "anomalies.csv";
+    link.click();
+}
+</script>
+
+</body>
+</html>
